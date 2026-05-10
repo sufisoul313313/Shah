@@ -1,0 +1,64 @@
+============================================================
+       CANADA PR APPLICATION STATUS REPORT
+       Generated: May 10, 2026
+============================================================
+
+------------------------------------------------------------
+  OVERALL PROGRESS
+------------------------------------------------------------
+  [███████░░░░░░░░░░░░░] 38%  (3/8 documents approved)
+
+  Approved  : 3
+  Submitted : 2
+  Pending   : 2
+  Expired   : 1
+
+------------------------------------------------------------
+  ⚠  EXPIRING WITHIN 30 DAYS
+------------------------------------------------------------
+  • Language Test (IELTS)           expires 2026-06-01  (22 days left)
+
+------------------------------------------------------------
+  ✗  EXPIRED DOCUMENTS
+------------------------------------------------------------
+  • ECA Report                      expired 2025-01-10
+    Note: Needs renewal
+
+------------------------------------------------------------
+  ○  PENDING DOCUMENTS  (action required)
+------------------------------------------------------------
+  • Birth Certificate
+    Note: Need certified copy
+  • Photographs
+
+------------------------------------------------------------
+  →  SUBMITTED / IN PROGRESS
+------------------------------------------------------------
+  • Medical Exam                    submitted 2025-11-01  |  expires 2026-11-01
+  • Proof of Funds                  submitted 2025-12-01
+
+------------------------------------------------------------
+  FULL DOCUMENT LIST
+------------------------------------------------------------
+  Document                        Status        Submitted        Expiry         
+  ------------------------------------------------------------------------------
+  Medical Exam                    → Submitted   2025-11-01       2026-11-01     
+  Police Certificate              ✓ Approved    2025-10-15       2026-10-15     
+  Birth Certificate               ○ Pending     —                —              
+  Passport Copy                   ✓ Approved    2025-09-01       —              
+  Proof of Funds                  → Submitted   2025-12-01       —              
+  Language Test (IELTS)           ✓ Approved    2024-06-01       2026-06-01     
+  ECA Report                      ✗ Expired     2023-01-10       2025-01-10     
+  Photographs                     ○ Pending     —                —              
+
+------------------------------------------------------------
+  NEXT STEPS
+------------------------------------------------------------
+  [ ] Obtain and submit: Birth Certificate
+  [ ] Obtain and submit: Photographs
+  [ ] Renew before expiry: Language Test (IELTS)
+  [ ] Renew expired doc: ECA Report
+
+============================================================
+  Report saved. Good luck with your PR application!
+============================================================
