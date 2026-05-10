@@ -11,6 +11,11 @@ from pathlib import Path
 try:
     import pandas as pd
     from openpyxl import load_workbook
+    from openpyxl import Workbook
+    from openpyxl.styles import (
+        PatternFill, Font, Alignment, Border, Side
+    )
+    from openpyxl.utils import get_column_letter
 except ImportError:
     print("Missing dependencies. Run: pip install pandas openpyxl")
     sys.exit(1)
@@ -85,159 +90,216 @@ def create_sample_excel(path: Path):
     print("Fill it in with your real data and run this script again.")
 
 
-def build_report(df: pd.DataFrame) -> str:
-    total = len(df)
-    approved = df[df["status"] == "Approved"]
-    pending  = df[df["status"] == "Pending"]
-    submitted = df[df["status"] == "Submitted"]
-    expired  = df[df["status"] == "Expired"]
+# ── colour palette ───────────────────────────────────────────────
+FILL = {
+    "header":    PatternFill("solid", fgColor="1F4E79"),
+    "section":   PatternFill("solid", fgColor="2E75B6"),
+    "Approved":  PatternFill("solid", fgColor="C6EFCE"),
+    "Submitted": PatternFill("solid", fgColor="FFEB9C"),
+    "Pending":   PatternFill("solid", fgColor="FCE4D6"),
+    "Expired":   PatternFill("solid", fgColor="F4CCCC"),
+    "alert":     PatternFill("solid", fgColor="FF0000"),
+    "summary":   PatternFill("solid", fgColor="DEEAF1"),
+    "steps":     PatternFill("solid", fgColor="E2EFDA"),
+}
+FONT_WHITE_BOLD = Font(bold=True, color="FFFFFF", size=11)
+FONT_BOLD       = Font(bold=True, size=10)
+FONT_NORMAL     = Font(size=10)
+FONT_RED_BOLD   = Font(bold=True, color="CC0000", size=10)
+CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
+LEFT   = Alignment(horizontal="left",   vertical="center", wrap_text=True)
 
-    pct_approved = round(len(approved) / total * 100) if total else 0
+def _thin_border():
+    s = Side(style="thin", color="BFBFBF")
+    return Border(left=s, right=s, top=s, bottom=s)
 
-    def _expiring_soon(d):
-        if d is None or d != d:  # catches None and NaT/NaN
+
+def _expiring_soon_mask(df: pd.DataFrame) -> pd.Series:
+    def _check(d):
+        if d is None or d != d:
             return False
         try:
             return TODAY <= d <= TODAY + timedelta(days=EXPIRY_ALERT_DAYS)
         except TypeError:
             return False
+    return df["expiry date"].apply(_check)
 
-    expiring_soon = df[df["expiry date"].apply(_expiring_soon)]
 
-    lines = []
+def _set_col_widths(ws, widths: list[int]):
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
 
-    def separator(char="=", width=60):
-        lines.append(char * width)
 
-    def section(title):
-        lines.append("")
-        separator("-")
-        lines.append(f"  {title}")
-        separator("-")
+def _section_row(ws, text: str, ncols: int):
+    r = ws.max_row + 1
+    ws.append([""] * ncols)
+    ws.cell(r, 1).value = text
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=ncols)
+    cell = ws.cell(r, 1)
+    cell.fill = FILL["section"]
+    cell.font = FONT_WHITE_BOLD
+    cell.alignment = LEFT
+    ws.row_dimensions[r].height = 18
 
-    # Header
-    separator()
-    lines.append("       CANADA PR APPLICATION STATUS REPORT")
-    lines.append(f"       Generated: {TODAY.strftime('%B %d, %Y')}")
-    separator()
 
-    # Summary
-    section("OVERALL PROGRESS")
-    bar_filled = int(pct_approved / 5)   # scale to 20-char bar
-    bar = "█" * bar_filled + "░" * (20 - bar_filled)
-    lines.append(f"  [{bar}] {pct_approved}%  ({len(approved)}/{total} documents approved)")
-    lines.append("")
-    lines.append(f"  Approved  : {len(approved)}")
-    lines.append(f"  Submitted : {len(submitted)}")
-    lines.append(f"  Pending   : {len(pending)}")
-    lines.append(f"  Expired   : {len(expired)}")
+def _header_row(ws, labels: list[str]):
+    ws.append(labels)
+    r = ws.max_row
+    for c, _ in enumerate(labels, start=1):
+        cell = ws.cell(r, c)
+        cell.fill = FILL["header"]
+        cell.font = FONT_WHITE_BOLD
+        cell.alignment = CENTER
+        cell.border = _thin_border()
+    ws.row_dimensions[r].height = 20
 
-    # Expiry alerts
-    section("⚠  EXPIRING WITHIN 30 DAYS")
-    if expiring_soon.empty:
-        lines.append("  No documents expiring soon.")
+
+def save_report(df: pd.DataFrame) -> Path:
+    REPORTS_DIR.mkdir(exist_ok=True)
+    out = REPORTS_DIR / f"PR_Status_Report_{TODAY.strftime('%Y-%m-%d')}.xlsx"
+
+    total     = len(df)
+    approved  = df[df["status"] == "Approved"]
+    submitted = df[df["status"] == "Submitted"]
+    pending   = df[df["status"] == "Pending"]
+    expired   = df[df["status"] == "Expired"]
+    pct       = round(len(approved) / total * 100) if total else 0
+    soon_mask = _expiring_soon_mask(df)
+    expiring  = df[soon_mask]
+
+    wb = Workbook()
+
+    # ── Sheet 1: Summary ─────────────────────────────────────────
+    ws = wb.active
+    ws.title = "Summary"
+    _set_col_widths(ws, [28, 16, 16, 16, 40])
+    ws.row_dimensions[1].height = 30
+
+    # Title
+    ws.append(["CANADA PR APPLICATION STATUS REPORT", "", "", "", ""])
+    ws.merge_cells("A1:E1")
+    ws["A1"].fill   = FILL["header"]
+    ws["A1"].font   = Font(bold=True, color="FFFFFF", size=14)
+    ws["A1"].alignment = CENTER
+
+    ws.append([f"Generated: {TODAY.strftime('%B %d, %Y')}", "", "", "", ""])
+    ws.merge_cells("A2:E2")
+    ws["A2"].font = Font(italic=True, size=10)
+    ws["A2"].alignment = CENTER
+
+    ws.append([])  # spacer
+
+    # Progress summary block
+    _section_row(ws, "OVERALL PROGRESS", 5)
+    for label, val in [
+        ("Total Documents", total),
+        ("Approved",        len(approved)),
+        ("Submitted",       len(submitted)),
+        ("Pending",         len(pending)),
+        ("Expired",         len(expired)),
+        ("% Complete",      f"{pct}%"),
+    ]:
+        r = ws.max_row + 1
+        ws.append([label, val, "", "", ""])
+        ws.cell(r, 1).font = FONT_BOLD
+        ws.cell(r, 1).fill = FILL["summary"]
+        ws.cell(r, 2).fill = FILL["summary"]
+        ws.cell(r, 2).alignment = CENTER
+
+    ws.append([])  # spacer
+
+    # Expiring soon alert
+    _section_row(ws, "⚠  EXPIRING WITHIN 30 DAYS", 5)
+    if expiring.empty:
+        r = ws.max_row + 1
+        ws.append(["No documents expiring soon.", "", "", "", ""])
+        ws.cell(r, 1).font = FONT_NORMAL
     else:
-        for _, row in expiring_soon.iterrows():
+        _header_row(ws, ["Document", "Status", "Expiry Date", "Days Left", "Notes"])
+        for _, row in expiring.iterrows():
             days_left = (row["expiry date"] - TODAY).days
-            lines.append(
-                f"  • {row['document name']:<30}  expires {row['expiry date']}  "
-                f"({days_left} day{'s' if days_left != 1 else ''} left)"
-            )
+            r = ws.max_row + 1
+            ws.append([
+                row["document name"],
+                row["status"],
+                str(row["expiry date"]),
+                days_left,
+                row["notes"],
+            ])
+            for c in range(1, 6):
+                ws.cell(r, c).fill   = FILL["alert"] if days_left <= 7 else PatternFill("solid", fgColor="FFEB9C")
+                ws.cell(r, c).font   = FONT_RED_BOLD if days_left <= 7 else FONT_NORMAL
+                ws.cell(r, c).border = _thin_border()
 
-    # Expired documents
-    if not expired.empty:
-        section("✗  EXPIRED DOCUMENTS")
-        for _, row in expired.iterrows():
-            exp = row["expiry date"] if pd.notna(row["expiry date"]) else "N/A"
-            lines.append(f"  • {row['document name']:<30}  expired {exp}")
-            if row["notes"]:
-                lines.append(f"    Note: {row['notes']}")
-
-    # Pending documents
-    section("○  PENDING DOCUMENTS  (action required)")
-    if pending.empty:
-        lines.append("  No documents pending.")
-    else:
-        for _, row in pending.iterrows():
-            lines.append(f"  • {row['document name']}")
-            if row["notes"]:
-                lines.append(f"    Note: {row['notes']}")
-
-    # Submitted (in progress)
-    section("→  SUBMITTED / IN PROGRESS")
-    if submitted.empty:
-        lines.append("  None.")
-    else:
-        for _, row in submitted.iterrows():
-            sub_date = row["date submitted"] if pd.notna(row["date submitted"]) else "N/A"
-            exp_date = f"  |  expires {row['expiry date']}" if pd.notna(row["expiry date"]) else ""
-            lines.append(f"  • {row['document name']:<30}  submitted {sub_date}{exp_date}")
-
-    # All documents table
-    section("FULL DOCUMENT LIST")
-    col_w = [30, 12, 15, 15]
-    header_row = (
-        f"  {'Document':<{col_w[0]}}  {'Status':<{col_w[1]}}"
-        f"  {'Submitted':<{col_w[2]}}  {'Expiry':<{col_w[3]}}"
-    )
-    lines.append(header_row)
-    lines.append("  " + "-" * (sum(col_w) + 6))
-    for _, row in df.iterrows():
-        sub  = str(row["date submitted"]) if pd.notna(row["date submitted"]) else "—"
-        exp  = str(row["expiry date"])    if pd.notna(row["expiry date"])    else "—"
-        status_marker = {
-            "Approved": "✓", "Pending": "○", "Submitted": "→", "Expired": "✗"
-        }.get(row["status"], " ")
-        lines.append(
-            f"  {row['document name']:<{col_w[0]}}  "
-            f"{status_marker} {row['status']:<{col_w[1]-2}}  "
-            f"{sub:<{col_w[2]}}  {exp:<{col_w[3]}}"
-        )
+    ws.append([])
 
     # Next steps
-    section("NEXT STEPS")
+    _section_row(ws, "NEXT STEPS", 5)
     steps = []
-    if not pending.empty:
-        for _, row in pending.iterrows():
-            steps.append(f"  [ ] Obtain and submit: {row['document name']}")
-    if not expiring_soon.empty:
-        for _, row in expiring_soon.iterrows():
-            steps.append(f"  [ ] Renew before expiry: {row['document name']}")
-    if not expired.empty:
-        for _, row in expired.iterrows():
-            steps.append(f"  [ ] Renew expired doc: {row['document name']}")
+    for _, row in pending.iterrows():
+        steps.append(f"[ ]  Obtain and submit: {row['document name']}")
+    for _, row in expiring.iterrows():
+        steps.append(f"[ ]  Renew before expiry: {row['document name']}")
+    for _, row in expired.iterrows():
+        steps.append(f"[ ]  Renew expired document: {row['document name']}")
     if not steps:
-        steps = ["  All documents are in order. Monitor for upcoming expiries."]
-    lines.extend(steps)
+        steps = ["All documents are in order. Monitor for upcoming expiries."]
+    for step in steps:
+        r = ws.max_row + 1
+        ws.append([step, "", "", "", ""])
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
+        ws.cell(r, 1).fill      = FILL["steps"]
+        ws.cell(r, 1).font      = FONT_NORMAL
+        ws.cell(r, 1).alignment = LEFT
 
-    lines.append("")
-    separator()
-    lines.append("  Report saved. Good luck with your PR application!")
-    separator()
+    # ── Sheet 2: All Documents ───────────────────────────────────
+    ws2 = wb.create_sheet("All Documents")
+    _set_col_widths(ws2, [30, 14, 16, 16, 40])
 
-    return "\n".join(lines)
+    ws2.append(["FULL DOCUMENT LIST", "", "", "", ""])
+    ws2.merge_cells("A1:E1")
+    ws2["A1"].fill      = FILL["header"]
+    ws2["A1"].font      = FONT_WHITE_BOLD
+    ws2["A1"].alignment = CENTER
+    ws2.row_dimensions[1].height = 24
 
+    ws2.append([])
+    _header_row(ws2, ["Document Name", "Status", "Date Submitted", "Expiry Date", "Notes"])
 
-def save_report(report_text: str) -> Path:
-    REPORTS_DIR.mkdir(exist_ok=True)
-    filename = REPORTS_DIR / f"PR_Status_Report_{TODAY.strftime('%Y-%m-%d')}.txt"
-    filename.write_text(report_text, encoding="utf-8")
-    return filename
+    status_colors = {k: FILL[k] for k in ("Approved", "Submitted", "Pending", "Expired")}
+
+    for _, row in df.iterrows():
+        sub = str(row["date submitted"]) if pd.notna(row["date submitted"]) else "—"
+        exp = str(row["expiry date"])    if pd.notna(row["expiry date"])    else "—"
+        r = ws2.max_row + 1
+        ws2.append([row["document name"], row["status"], sub, exp, row["notes"]])
+        fill = status_colors.get(row["status"], PatternFill())
+        for c in range(1, 6):
+            ws2.cell(r, c).fill      = fill
+            ws2.cell(r, c).font      = FONT_NORMAL
+            ws2.cell(r, c).border    = _thin_border()
+            ws2.cell(r, c).alignment = LEFT
+        # Highlight entire row red if expired
+        if row["status"] == "Expired":
+            for c in range(1, 6):
+                ws2.cell(r, c).font = FONT_RED_BOLD
+
+    # freeze header rows
+    ws2.freeze_panes = "A4"
+
+    wb.save(out)
+    return out
 
 
 def main():
-    # Allow overriding the Excel path via command-line argument
     excel_path = Path(sys.argv[1]) if len(sys.argv) > 1 else EXCEL_PATH
 
     print(f"Loading: {excel_path}")
     df = load_tracker(excel_path)
     print(f"Loaded {len(df)} documents.")
 
-    report = build_report(df)
-    print(report)
-
-    out_path = save_report(report)
-    print(f"\nReport saved to: {out_path}")
+    out_path = save_report(df)
+    print(f"Report saved to: {out_path}")
 
 
 if __name__ == "__main__":
