@@ -94,7 +94,6 @@ def build_report(df: pd.DataFrame) -> str:
 
     pct_approved = round(len(approved) / total * 100) if total else 0
 
-    # Expiring within 30 days (includes already-expired docs with a future expiry? no — upcoming only)
     def _expiring_soon(d):
         if d is None or d != d:  # catches None and NaT/NaN
             return False
